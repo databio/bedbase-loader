@@ -32,3 +32,15 @@ jobs:
         run: |
             echo "Hello, ${{ github.actor }}"
             echo "The GSE is ${{ inputs.gse }}"
+
+      - name: Upload Project
+        run: bedboss geo upload-gse --outfolder /tmp/out --gse ${{ inputs.gse }} --no-use-skipper --light --bedbase-config config.yaml
+        env:
+          POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          QDRANT_HOST: ${{ secrets.QDRANT_HOST }}
+          QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
+          AWS_ENDPOINT_URL: ${{ secrets.AWS_ENDPOINT_URL }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
