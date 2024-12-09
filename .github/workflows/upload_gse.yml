@@ -11,7 +11,10 @@ on:
 jobs:
   build:
     runs-on: ${{ matrix.os }}
-
+    strategy:
+      matrix:
+        python-version: [ "3.12" ]
+        os: [ ubuntu-latest ]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
