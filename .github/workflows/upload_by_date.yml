@@ -9,6 +9,10 @@ on:
       end:
         description: 'end data e.g. [2020/04/27]'
         required: true
+      search_limit:
+        description: 'limit of GSEs to search for'
+        required: false
+        default: 300
 
 
 jobs:
@@ -37,8 +41,7 @@ jobs:
             echo "The GSE is ${{ inputs.gse }}"
 
       - name: Upload Project
-        run: bedboss geo upload-all --outfolder /tmp/out --start-date ${{ inputs.start }} --end-date ${{ inputs.end }}  --no-use-skipper --lite --bedbase-config config.yaml --no-use-skipper --no-preload --search-limit 1
-        # TODO: delete --search-limit 1 - this is just for testing
+        run: bedboss geo upload-all --outfolder /tmp/out --start-date ${{ inputs.start }} --end-date ${{ inputs.end }}  --no-use-skipper --lite --bedbase-config config.yaml --no-use-skipper --no-preload --search-limit ${{ inputs.search_limit }}
         env:
           POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
