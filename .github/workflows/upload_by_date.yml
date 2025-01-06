@@ -35,10 +35,11 @@ jobs:
           uv pip install torch==2.3.1+cpu -f https://download.pytorch.org/whl/torch_stable.html --system
           uv pip install git+https://github.com/databio/bedboss.git@dev#egg=bedboss --system
 
-      - name: Do something here
+      - name: Print dates
         run: |
-            echo "Hello, ${{ github.actor }}"
-            echo "The GSE is ${{ inputs.gse }}"
+          echo "Hello, ${{ github.actor }}"
+          echo "start date: ${{ inputs.start }}"
+          echo "end date: ${{ inputs.end }}"
 
       - name: Upload Project
         run: bedboss geo upload-all --outfolder /tmp/out --start-date ${{ inputs.start }} --end-date ${{ inputs.end }}  --no-use-skipper --lite --bedbase-config config.yaml --no-use-skipper --no-preload --search-limit ${{ inputs.search_limit }}

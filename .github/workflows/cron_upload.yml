@@ -1,4 +1,4 @@
-name: Upload GSEs in a date range
+name: GEO beds auto upload
 
 on:
   schedule:
@@ -35,10 +35,11 @@ jobs:
           echo "current_date=$(date +'%Y/%m/%d')" >> $GITHUB_ENV
           echo "date_2_days_ago=$(date -d '2 days ago' +'%Y/%m/%d')" >> $GITHUB_ENV
 
-      - name: Do something here
+      - name: Print dates
         run: |
-            echo "Hello, ${{ github.actor }}"
-            echo "The GSE is ${{ inputs.gse }}"
+          echo "Hello, ${{ github.actor }}"
+          echo "currect date: ${{ env.current_date }}"
+          echo "date 2 days ago: ${{ env.date_2_days_ago }}"
 
       - name: Upload Project
         run: bedboss geo upload-all --outfolder /tmp/out --start-date ${{ env.date_2_days_ago }} --end-date ${{ env.current_date }} --no-use-skipper --lite --bedbase-config config.yaml --no-use-skipper --no-preload
