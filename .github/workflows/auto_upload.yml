@@ -1,10 +1,13 @@
-name: Upload one gse
+name: Upload GSEs in a date range
 
 on:
   workflow_dispatch:
     inputs:
-      gse:
-        description: 'gse number. ["GSE12345"]'
+      start:
+        description: 'start data e.g. [2020/02/24]'
+        required: true
+      end:
+        description: 'end data e.g. [2020/04/27]'
         required: true
 
 
@@ -34,7 +37,8 @@ jobs:
             echo "The GSE is ${{ inputs.gse }}"
 
       - name: Upload Project
-        run: bedboss geo upload-gse --outfolder /tmp/out --gse ${{ inputs.gse }} --no-use-skipper --lite --bedbase-config config.yaml --no-use-skipper --no-preload
+        run: bedboss geo upload-all --outfolder /tmp/out --start-date ${{ inputs.start }} --end-date ${{ inputs.end }}  --no-use-skipper --lite --bedbase-config config.yaml --no-use-skipper --no-preload --search-limit 1
+        # TODO: delete --search-limit 1 - this is just for testing
         env:
           POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
