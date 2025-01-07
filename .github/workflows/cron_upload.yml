@@ -33,7 +33,7 @@ jobs:
         id: dates
         run: |
           echo "current_date=$(date +'%Y/%m/%d')" >> $GITHUB_ENV
-          echo "date_2_days_ago=$(date -d '2 days ago' +'%Y/%m/%d')" >> $GITHUB_ENV
+          echo "date_2_days_ago=$(date -d '3 days ago' +'%Y/%m/%d')" >> $GITHUB_ENV
 
       - name: Print dates
         run: |
