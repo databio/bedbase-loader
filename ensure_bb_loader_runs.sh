@@ -11,6 +11,6 @@ if [ $bbloader_job -eq 1 ]; then
 else if [ $bbloader_job -eq 2 ]; then
   echo "bbloader job found in queue." 1>&2
 else
-  echo "More than one bbloader job found in queue. Exiting." 1>&2
+  echo "More than one bbloader job found in queue, or error happened! Exiting." 1>&2
 fi
 fi

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --begin=15:00  #Starts at 15:00
+#SBATCH --begin=15:30  #Starts at 15:00
 #SBATCH --account=shefflab
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
@@ -19,6 +19,8 @@ echo "Running processing of bed files that have not been processed yet."
 
 source /home/bnt4me/venv/refgenie/bin/activate
 source /home/bnt4me/v_env/.env
+
+go
 
 
 bedboss reprocess-all --bedbase-config /home/bnt4me/bedbase/api.bedbase.org.yaml --outfolder /project/shefflab/brickyard/results_pipeline/bedbase/geo --limit 5
