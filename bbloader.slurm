@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --begin=15:30  #Starts at 15:00
+#SBATCH --begin=11:45  #Starts at 15:00
 #SBATCH --account=shefflab
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
