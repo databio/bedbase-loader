@@ -26,7 +26,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install uv
           uv pip install torch==2.3.1+cpu -f https://download.pytorch.org/whl/torch_stable.html --system
-          uv pip install git+https://github.com/databio/bedboss.git@dev#egg=bedboss --system
+          uv pip install bedboss --system
+#          uv pip install git+https://github.com/databio/bedboss.git@dev#egg=bedboss --system
 
       - name: Do something here
         run: |
