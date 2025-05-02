@@ -1,0 +1,28 @@
+name: Update stats and keep running
+
+on:
+  schedule:
+  - cron: '0 0 * * 1' # every Monday at midnight
+  workflow_dispatch:
+    inputs: null
+
+jobs:
+  update_stats:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.13"
+    - name: Update stats
+      run: |
+        python3 -m pip install -r requirements.txt
+        pwd
+        python3 keep_running.py
+    - name: Commit report
+      run: |
+        git config --global user.name 'Oleksandr Khoroshevskyi'
+        git config --global user.email 'khoroshevskyi@users.noreply.github.com'
+        git add -A
+        git commit -m "Automated update of number of files"
+        git push
