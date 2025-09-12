@@ -23,7 +23,8 @@ jobs:
 
     - name: Update umap
       run: |
-        bedboss download-umap --config config.yaml --out umap/hg38_umap.json 
+        bedboss --version
+        bedboss download-umap --config config.yaml --output-file umap/hg38_umap.json 
 
     - name: Commit report
       run: |

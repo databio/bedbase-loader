@@ -23,6 +23,7 @@ jobs:
 
     - name: Update umap
       run: |
+        bedboss --version
         bedboss update-genomes --config config.yaml
 
     - name: Commit report
