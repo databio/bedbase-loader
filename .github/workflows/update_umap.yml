@@ -24,7 +24,16 @@ jobs:
     - name: Update umap
       run: |
         bedboss --version
-        bedboss download-umap --config config.yaml --output-file umap/hg38_umap.json 
+        bedboss download-umap --config config.yaml --output-file umap/hg38_umap.json
+      env:
+        POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
+        POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+        POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+        QDRANT_HOST: ${{ secrets.QDRANT_HOST }}
+        QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
+        AWS_ENDPOINT_URL: ${{ secrets.AWS_ENDPOINT_URL }}
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
     - name: Commit report
       run: |
