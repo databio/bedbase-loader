@@ -18,6 +18,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install uv
+        pip install huggingface_hub
         uv pip install torch==2.3.1+cpu -f https://download.pytorch.org/whl/torch_stable.html --system
         uv pip install torch==2.3.1+cpu -f https://download.pytorch.org/whl/torch_stable.html --system
         uv pip install git+https://github.com/databio/bedboss.git@umap_model#egg=bedboss --system
@@ -37,10 +38,16 @@ jobs:
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
-    - name: Commit report
+    - name: Add to huggingface repo
       run: |
-        git config --global user.name 'Oleksandr Khoroshevskyi'
-        git config --global user.email 'khoroshevskyi@users.noreply.github.com'
-        git add -A
-        git commit -m "Automated update of number of files"
-        git push
+        python upload_hf.py umap
+      env:
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+
+#    - name: Commit report
+#      run: |
+#        git config --global user.name 'Oleksandr Khoroshevskyi'
+#        git config --global user.email 'khoroshevskyi@users.noreply.github.com'
+#        git add -A
+#        git commit -m "Automated update of number of files"
+#        git push

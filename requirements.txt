@@ -1,1 +1,2 @@
 requests
+huggingface_hub
