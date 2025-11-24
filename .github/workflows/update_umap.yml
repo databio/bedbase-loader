@@ -13,12 +13,11 @@ jobs:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
       with:
-        python-version: "3.12"
+        python-version: "3.13"
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install uv
-        pip install huggingface_hub
         uv pip install torch==2.3.1+cpu -f https://download.pytorch.org/whl/torch_stable.html --system
         uv pip install torch==2.3.1+cpu -f https://download.pytorch.org/whl/torch_stable.html --system
         uv pip install git+https://github.com/databio/bedboss.git@umap_model#egg=bedboss --system
@@ -40,6 +39,7 @@ jobs:
 
     - name: Add to huggingface repo
       run: |
+        pip install huggingface_hub
         python upload_hf.py umap
       env:
         HF_TOKEN: ${{ secrets.HF_TOKEN }}
