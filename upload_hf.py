@@ -8,26 +8,22 @@ from huggingface_hub import HfApi
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Upload a folder to Hugging Face Hub"
-    )
+    parser = argparse.ArgumentParser(description="Upload a folder to Hugging Face Hub")
     parser.add_argument(
-        "folder_path",
-        type=str,
-        help="Path to the local folder to upload"
+        "folder_path", type=str, help="Path to the local folder to upload"
     )
     parser.add_argument(
         "--repo-id",
         type=str,
         default="databio/bedbase-umap",
-        help="Repository ID (default: databio/bedbase-umap)"
+        help="Repository ID (default: databio/bedbase-umap)",
     )
     parser.add_argument(
         "--repo-type",
         type=str,
         default="model",
         choices=["model", "dataset", "space"],
-        help="Repository type (default: model)"
+        help="Repository type (default: model)",
     )
 
     args = parser.parse_args()
