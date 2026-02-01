@@ -2,6 +2,7 @@
 """
 CLI tool for uploading folders to Hugging Face
 """
+
 import argparse
 import os
 from huggingface_hub import HfApi

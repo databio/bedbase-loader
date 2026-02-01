@@ -13,6 +13,10 @@ on:
         description: 'limit of GSEs to search for'
         required: false
         default: 300
+      tag:
+        description: 'File level to upload. ["samples", "series"]'
+        required: false
+        default: "samples"
 
 
 jobs:
@@ -44,7 +48,7 @@ jobs:
           echo "end date: ${{ inputs.end }}"
 
       - name: Upload Project
-        run: bedboss geo upload-all --outfolder /tmp/out --start-date ${{ inputs.start }} --end-date ${{ inputs.end }}  --no-use-skipper --lite --bedbase-config config.yaml --no-use-skipper --no-preload --search-limit ${{ inputs.search_limit }}
+        run: bedboss geo upload-all --outfolder /tmp/out --start-date ${{ inputs.start }} --end-date ${{ inputs.end }}  --no-use-skipper --lite --bedbase-config config.yaml --no-use-skipper --no-preload --search-limit ${{ inputs.search_limit }} --geo-tag ${{ inputs.tag }}
         env:
           POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}

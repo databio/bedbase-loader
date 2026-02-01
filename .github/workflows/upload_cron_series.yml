@@ -44,7 +44,7 @@ jobs:
           echo "date 2 days ago: ${{ env.date_2_days_ago }}"
 
       - name: Upload Project
-        run: bedboss geo upload-all --outfolder /tmp/out --start-date ${{ env.date_2_days_ago }} --end-date ${{ env.current_date }} --geo-tag samples --no-use-skipper --lite --bedbase-config config.yaml --no-use-skipper --no-preload
+        run: bedboss geo upload-all --outfolder /tmp/out --start-date ${{ env.date_2_days_ago }} --end-date ${{ env.current_date }} --geo-tag series --no-use-skipper --lite --bedbase-config config.yaml --no-use-skipper --no-preload
 
         env:
           POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}

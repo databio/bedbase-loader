@@ -6,6 +6,10 @@ on:
       gse:
         description: 'gse number. ["GSE12345"]'
         required: true
+      tag:
+        description: 'File level to upload. ["samples", "series"]'
+        required: false
+        default: "samples"
 
 
 jobs:
@@ -33,9 +37,10 @@ jobs:
         run: |
             echo "Hello, ${{ github.actor }}"
             echo "The GSE is ${{ inputs.gse }}"
+            echo "Level (tag) ${{ inputs.tag }}"
 
       - name: Upload Project
-        run: bedboss geo upload-gse --outfolder /tmp/out --gse ${{ inputs.gse }} --no-use-skipper --lite --bedbase-config config.yaml --no-use-skipper --no-preload
+        run: bedboss geo upload-gse --outfolder /tmp/out --gse ${{ inputs.gse }} --no-use-skipper --lite --bedbase-config config.yaml --no-use-skipper --no-preload --geo-tag ${{ inputs.tag }}
         env:
           POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
