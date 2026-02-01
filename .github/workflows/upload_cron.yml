@@ -1,4 +1,4 @@
-name: GEO beds cron upload
+name: GEO series upload
 
 on:
   schedule:
