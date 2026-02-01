@@ -1,4 +1,4 @@
-name: GEO series upload
+name: GEO samples upload
 
 on:
   schedule:
