@@ -30,7 +30,7 @@ jobs:
     - name: Update umap
       run: |
         bedboss --version
-        bedboss download-umap --config config.yaml --output-file umap/hg38_umap.json --top-assays 20 --top-cell-lines 20
+        bedboss download-umap --config config.yaml --output-file umap/hg38_umap.json --top-assays 50 --top-cell-lines 50
       env:
         POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
         POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
