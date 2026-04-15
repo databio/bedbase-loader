@@ -1,10 +1,11 @@
 name: Update umap
 
 on:
-  schedule:
-  - cron: '0 0 * * 2' # every Tuesday at midnight
   workflow_dispatch:
     inputs: null
+#  schedule:
+#  - cron: '0 0 * * 2' # every Tuesday at midnight
+
 
 jobs:
   update_umap:
