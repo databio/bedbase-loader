@@ -40,7 +40,7 @@ jobs:
       - name: Print dates
         run: |
           echo "Hello, ${{ github.actor }}"
-          echo "currect date: ${{ env.current_date }}"
+          echo "current date: ${{ env.current_date }}"
           echo "date 2 days ago: ${{ env.date_2_days_ago }}"
 
       - name: Upload Project
