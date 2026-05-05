@@ -6,7 +6,7 @@ For complete documentation on the data loading architecture, see: [BEDbase Data 
 
 ## Accbase Loading
 
-Accbase workflows queue ATAC-seq samples for processing by Forge on Rivanna HPC.
+Accbase workflows queue ATAC-seq samples for downstream processing on Rivanna HPC.
 
 | Workflow | Schedule | Purpose |
 |----------|----------|---------|
@@ -14,8 +14,8 @@ Accbase workflows queue ATAC-seq samples for processing by Forge on Rivanna HPC.
 | `accbase_queue_gse.yml` | Manual | Queue samples from a specific GSE |
 
 Unlike BEDbase (which processes files in GitHub Actions + Fargate), Accbase only
-queues samples in the forge_queue table. Heavy processing (PEPATAC pipeline) runs
-on Rivanna HPC via the Forge system.
+queues samples in the `sample_queue` table. Heavy processing (PEPATAC pipeline)
+runs on Rivanna HPC.
 
 Configuration: `accbase_config.yaml`
 
@@ -27,11 +27,11 @@ For Accbase workflows:
 - `ACCBASE_POSTGRES_PASSWORD` - Database password
 - `PEPHUB_API_KEY` - Optional, for higher rate limits
 
-### Forge Queue Consumer
+### Queue Consumer
 
-The forge_queue table is consumed by Forge on Rivanna:
+The `sample_queue` table is consumed on Rivanna:
 
-1. Forge queries for samples with status='pending_forge'
+1. Consumer queries for samples with status='pending'
 2. Generates looper submission from PEPhub PEP
 3. Submits SLURM jobs via looper
 4. Updates status to 'processing'
