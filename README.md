@@ -1,3 +1,5 @@
-# BEDbase lader
+# BEDbase loader
 
-This repository contains code for automated BED file uploads to BEDbase and for tracking the number of files in BEDbase on a weekly basis.
+This repository contains GitHub Actions workflows for automated BED file uploads to BEDbase.
+
+For complete documentation on the data loading architecture, see: [BEDbase Data Loading](https://docs.bedbase.org/bedbase/bedbase-data-loading/)
