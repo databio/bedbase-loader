@@ -1,0 +1,16 @@
+database:
+  host: $ACCBASE_POSTGRES_HOST
+  port: 5432
+  password: $ACCBASE_POSTGRES_PASSWORD
+  user: $ACCBASE_POSTGRES_USER
+  database: accbase
+phc:
+  namespace: accbase
+  name: accbase_all
+  tag: default
+queue:
+  # Samples queued here for Forge to pick up
+  status_table: forge_queue
+  pending_status: "pending_forge"
+  processing_status: "processing"
+  completed_status: "completed"
