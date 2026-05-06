@@ -47,7 +47,7 @@ def main():
     if not args.gse and not (args.start_date and args.end_date):
         parser.error("Must provide either --gse or both --start-date and --end-date")
 
-    config = yacman.YAMLConfigManager(filepath=args.config).exp
+    config = yacman.YAMLConfigManager.from_yaml_file(args.config).exp
     namespace = config['phc']['namespace']
 
     phc = PEPHubClient()
