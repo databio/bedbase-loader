@@ -64,9 +64,13 @@ def main():
 
         try:
             result = phc.find_project(namespace=namespace)
+            print(f"Query result type: {type(result)}, count: {getattr(result, 'count', 'N/A')}")
             projects = result.results if hasattr(result, 'results') else []
+            print(f"Projects list length: {len(projects)}")
         except Exception as e:
             print(f"Error listing projects: {e}")
+            import traceback
+            traceback.print_exc()
             projects = []
 
         if not projects:
