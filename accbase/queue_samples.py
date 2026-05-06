@@ -16,9 +16,9 @@ from pephubclient import PEPHubClient
 from db_agent import AccbaseDBAgent
 
 
-def queue_project_samples(phc, agent, namespace, project_name):
+def queue_project_samples(phc, agent, namespace, project_name, tag="default"):
     """Queue all samples from a single project. Returns count of newly queued samples."""
-    registry = f"{namespace}/{project_name}"
+    registry = f"{namespace}/{project_name}:{tag}"
     try:
         pep = phc.load_project(registry)
     except Exception as e:
@@ -81,13 +81,16 @@ def main():
             for project in projects:
                 if hasattr(project, 'name'):
                     project_name = project.name
+                    project_tag = getattr(project, 'tag', 'default')
                 elif isinstance(project, dict):
                     project_name = project.get('name', str(project))
+                    project_tag = project.get('tag', 'default')
                 else:
                     project_name = str(project)
+                    project_tag = 'default'
 
-                print(f"Processing: {project_name}")
-                total_queued += queue_project_samples(phc, agent, namespace, project_name)
+                print(f"Processing: {project_name}:{project_tag}")
+                total_queued += queue_project_samples(phc, agent, namespace, project_name, project_tag)
 
     print(f"\nQueued {total_queued} new samples for downstream processing")
 
