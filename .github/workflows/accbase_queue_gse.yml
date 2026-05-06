@@ -1,0 +1,30 @@
+name: Queue single Accbase GSE
+
+on:
+  workflow_dispatch:
+    inputs:
+      gse:
+        description: 'GSE accession (e.g. GSE12345)'
+        required: true
+
+jobs:
+  queue:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install peppy pephubclient sqlmodel 'psycopg[binary]' yacman
+
+      - name: Queue GSE samples
+        run: python accbase/queue.py --gse ${{ inputs.gse }} --config accbase/config.yaml
+        env:
+          ACCBASE_POSTGRES_HOST: ${{ secrets.ACCBASE_POSTGRES_HOST }}
+          ACCBASE_POSTGRES_PASSWORD: ${{ secrets.ACCBASE_POSTGRES_PASSWORD }}
+          ACCBASE_POSTGRES_USER: ${{ secrets.ACCBASE_POSTGRES_USER }}
+          PEPHUB_API_KEY: ${{ secrets.PEPHUB_API_KEY }}

@@ -1,0 +1,14 @@
+database:
+  host: $ACCBASE_POSTGRES_HOST
+  port: 5432
+  password: $ACCBASE_POSTGRES_PASSWORD
+  user: $ACCBASE_POSTGRES_USER
+  database: accbase
+phc:
+  namespace: accbase
+queue:
+  # Samples queued here for downstream processing
+  status_table: sample_queue
+  pending_status: "pending"
+  processing_status: "processing"
+  completed_status: "completed"
