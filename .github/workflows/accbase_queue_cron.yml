@@ -27,7 +27,7 @@ jobs:
           echo "date_3_days_ago=$(date -d '3 days ago' +'%Y/%m/%d')" >> $GITHUB_ENV
 
       - name: Queue new samples
-        run: python accbase/queue.py --start-date ${{ env.date_3_days_ago }} --end-date ${{ env.current_date }} --config accbase/config.yaml
+        run: python accbase/queue_samples.py --start-date ${{ env.date_3_days_ago }} --end-date ${{ env.current_date }} --config accbase/config.yaml
         env:
           ACCBASE_POSTGRES_HOST: ${{ secrets.ACCBASE_POSTGRES_HOST }}
           ACCBASE_POSTGRES_PASSWORD: ${{ secrets.ACCBASE_POSTGRES_PASSWORD }}

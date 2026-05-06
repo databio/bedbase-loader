@@ -23,7 +23,7 @@ jobs:
           uv pip install peppy pephubclient sqlmodel 'psycopg[binary]' yacman --system
 
       - name: Queue GSE samples
-        run: python accbase/queue.py --gse ${{ inputs.gse }} --config accbase/config.yaml
+        run: python accbase/queue_samples.py --gse ${{ inputs.gse }} --config accbase/config.yaml
         env:
           ACCBASE_POSTGRES_HOST: ${{ secrets.ACCBASE_POSTGRES_HOST }}
           ACCBASE_POSTGRES_PASSWORD: ${{ secrets.ACCBASE_POSTGRES_PASSWORD }}
