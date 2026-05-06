@@ -63,7 +63,8 @@ def main():
         print(f"Date range: {args.start_date} to {args.end_date}")
 
         try:
-            projects = phc.find_project(namespace=namespace)
+            result = phc.find_project(namespace=namespace)
+            projects = result.results if hasattr(result, 'results') else []
         except Exception as e:
             print(f"Error listing projects: {e}")
             projects = []
