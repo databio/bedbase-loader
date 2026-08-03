@@ -1,0 +1,4 @@
+pyarrow
+boto3
+psycopg[binary]
+PyYAML

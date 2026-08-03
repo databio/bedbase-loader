@@ -1,0 +1,68 @@
+name: Export metadata to S3
+
+# Dumps the full BEDbase metadata corpus (plus bedsets and membership) to dated,
+# immutable Parquet artifacts and publishes them to s3://bedbase/exports/.
+#
+# Rollout (see bedbase_metadata_export_plan_v1): this file is intentionally
+# workflow_dispatch-only. Dry-run with publish=false, then a real run, verify the
+# artifacts, and only then enable the schedule below as a separate commit.
+#
+#  schedule:
+#  - cron: '0 0 * * 1' # every Monday at midnight
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Upload to S3 and record the snapshot index. Leave false for a dry run.'
+        required: true
+        default: false
+        type: boolean
+      fail_threshold:
+        description: 'Abort without publishing if this fraction of rows is missing'
+        required: true
+        default: '0.01'
+        type: string
+
+jobs:
+  export_metadata:
+    runs-on: ubuntu-latest
+    # An order of magnitude over the ~2-5 min expectation, well under the
+    # 360-minute hard cap, so a hang fails in a useful amount of time.
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v7
+    - uses: actions/setup-python@v7
+      with:
+        python-version: "3.13"
+
+    - name: Install dependencies
+      run: python3 -m pip install -r requirements-export.txt
+
+    - name: Disk before
+      run: df -h "$RUNNER_TEMP" /
+
+    - name: Export metadata
+      run: |
+        ARGS=(--config config.yaml --output-dir "$RUNNER_TEMP/exports" --fail-threshold "$FAIL_THRESHOLD")
+        if [ "$PUBLISH" = "true" ]; then
+          ARGS+=(--publish)
+        else
+          ARGS+=(--no-publish)
+        fi
+        python3 export_metadata.py "${ARGS[@]}"
+      env:
+        # On a scheduled run the inputs context is empty, so PUBLISH needs a
+        # fallback or the job would silently skip publishing. FAIL_THRESHOLD too.
+        PUBLISH: ${{ github.event_name == 'schedule' && 'true' || inputs.publish }}
+        FAIL_THRESHOLD: ${{ inputs.fail_threshold || '0.01' }}
+        POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
+        POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+        POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+        AWS_ENDPOINT_URL: ${{ secrets.AWS_ENDPOINT_URL }}
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+    - name: Disk after
+      if: always()
+      run: df -h "$RUNNER_TEMP" /
