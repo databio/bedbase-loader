@@ -2,21 +2,28 @@
 """
 Weekly bulk metadata export for BEDbase.
 
-Dumps the full metadata corpus to Parquet (plus bedsets and bedset membership),
+Dumps the metadata corpus to Parquet (metadata, bedsets, bedset membership),
 writes a verifiable manifest, and optionally publishes the artifacts to S3 and
 records them in the ``bed_snapshots`` index table.
 
 Design notes:
 
-- The metadata table is read with **keyset (seek) pagination** on the ``bed.id``
-  primary key, never ``OFFSET``. Each chunk is an index descent, so the scan is
-  flat with depth. PEPhub measured its OFFSET-based equivalent degrading from
-  1.9s to 37.6s across the table; keyset avoids that entirely.
-- The whole read runs in a single ``REPEATABLE READ`` transaction so the dump is
-  a consistent snapshot. The ``count(*)`` used by the integrity gate is taken in
-  the same transaction, so the gate compares like with like.
-- Rows are streamed to disk with ``pyarrow.parquet.ParquetWriter`` (zstd). The
-  whole table is never materialized in memory.
+- **Sequential, not ordered.** The tables are read with plain unordered
+  ``SELECT``s streamed through server-side cursors. Production BEDbase is a
+  cache-starved instance (shared_buffers ~92MB vs a ~680MB working set); an
+  ``ORDER BY bed.id`` scan walks the pkey in content-digest order, turning every
+  row into a random heap fetch (~2 pages/row) that never stays cached — a 30-min
+  hang. An unordered scan is sequential I/O and streams in seconds.
+- **The metadata join happens on the runner, not the DB.** ``bed_metadata`` is
+  streamed into an in-memory id→row map, then ``bed`` is streamed and merged
+  against it (a LEFT JOIN in Python). This keeps the join off the constrained
+  production database — it only does two sequential scans — and does not depend
+  on the planner picking a good join plan.
+- **The whole read is one ``REPEATABLE READ`` transaction**, so the dump is a
+  consistent snapshot and the ``count(*)`` used by the integrity gate is taken
+  in the same snapshot.
+- Rows are streamed to disk with ``pyarrow.parquet.ParquetWriter`` (zstd). No
+  table is fully materialized as Parquet in memory.
 - The manifest's ``rows`` field is the count of rows actually written, not the
   value ``count(*)`` returned. Recording the live count here was the PEPhub bug
   that made a short dump undetectable.
@@ -42,9 +49,8 @@ _LOGGER = logging.getLogger("bedbase-export")
 # Bump when the exported column set or types change in a breaking way.
 SCHEMA_VERSION = 1
 
-# Default keyset chunk size. 50k rows per index descent is a good balance of
-# round-trips against per-chunk memory.
-DEFAULT_CHUNK_SIZE = 50_000
+# Rows fetched per server-side cursor round trip / written per Parquet batch.
+DEFAULT_BATCH_SIZE = 20_000
 
 # S3 key prefix for published artifacts.
 EXPORT_PREFIX = "exports"
@@ -53,6 +59,8 @@ EXPORT_PREFIX = "exports"
 # --------------------------------------------------------------------------- #
 # Column specs. Each is (column_name, pyarrow_type). The SQL projection and the
 # Parquet schema are both derived from these lists, so they cannot drift.
+# The metadata export is bed + bed_metadata only; per-file stats are not
+# included (they can be a separate export if needed).
 # --------------------------------------------------------------------------- #
 
 _TS = pa.timestamp("us", tz="UTC")
@@ -96,28 +104,6 @@ META_COLUMNS = [
     ("global_experiment_id", pa.list_(pa.string())),
 ]
 
-STATS_COLUMNS = [
-    ("number_of_regions", pa.float64()),
-    ("gc_content", pa.float64()),
-    ("median_tss_dist", pa.float64()),
-    ("mean_region_width", pa.float64()),
-    ("exon_frequency", pa.float64()),
-    ("intron_frequency", pa.float64()),
-    ("promoterprox_frequency", pa.float64()),
-    ("intergenic_frequency", pa.float64()),
-    ("promotercore_frequency", pa.float64()),
-    ("fiveutr_frequency", pa.float64()),
-    ("threeutr_frequency", pa.float64()),
-    ("fiveutr_percentage", pa.float64()),
-    ("threeutr_percentage", pa.float64()),
-    ("promoterprox_percentage", pa.float64()),
-    ("exon_percentage", pa.float64()),
-    ("intron_percentage", pa.float64()),
-    ("intergenic_percentage", pa.float64()),
-    ("promotercore_percentage", pa.float64()),
-    ("tssdist", pa.float64()),
-]
-
 BEDSET_COLUMNS = [
     ("id", pa.string()),
     ("name", pa.string()),
@@ -136,48 +122,24 @@ MEMBERSHIP_COLUMNS = [
     ("bedfile_id", pa.string()),
 ]
 
-METADATA_SCHEMA = pa.schema(BED_COLUMNS + META_COLUMNS + STATS_COLUMNS)
+METADATA_SCHEMA = pa.schema(BED_COLUMNS + META_COLUMNS)
 BEDSET_SCHEMA = pa.schema(BEDSET_COLUMNS)
 MEMBERSHIP_SCHEMA = pa.schema(MEMBERSHIP_COLUMNS)
 
 
-def _metadata_query() -> str:
-    cols = (
-        [f"b.{c}" for c, _ in BED_COLUMNS]
-        + [f"m.{c}" for c, _ in META_COLUMNS]
-        + [f"s.{c}" for c, _ in STATS_COLUMNS]
-    )
-    return f"""
-        SELECT {", ".join(cols)}
-        FROM bed b
-        LEFT JOIN bed_metadata m ON b.id = m.id
-        LEFT JOIN bed_stats s ON b.id = s.id
-        WHERE (%(cursor)s::text IS NULL OR b.id > %(cursor)s::text)
-        ORDER BY b.id
-        LIMIT %(limit)s
-    """
+def _bed_query() -> str:
+    return "SELECT " + ", ".join(c for c, _ in BED_COLUMNS) + " FROM bed"
+
+
+def _meta_query() -> str:
+    return "SELECT id, " + ", ".join(c for c, _ in META_COLUMNS) + " FROM bed_metadata"
 
 
 def _bedset_query() -> str:
-    cols = [c for c, _ in BEDSET_COLUMNS]
-    return f"""
-        SELECT {", ".join(cols)}
-        FROM bedsets
-        WHERE (%(cursor)s::text IS NULL OR id > %(cursor)s::text)
-        ORDER BY id
-        LIMIT %(limit)s
-    """
+    return "SELECT " + ", ".join(c for c, _ in BEDSET_COLUMNS) + " FROM bedsets"
 
 
-# Composite keyset on the (bedset_id, bedfile_id) primary key. The row-value
-# comparison uses the PK btree index directly.
-MEMBERSHIP_QUERY = """
-    SELECT bedset_id, bedfile_id
-    FROM bedfile_bedset_relation
-    WHERE (%(a)s::text IS NULL OR (bedset_id, bedfile_id) > (%(a)s::text, %(b)s::text))
-    ORDER BY bedset_id, bedfile_id
-    LIMIT %(limit)s
-"""
+MEMBERSHIP_QUERY = "SELECT bedset_id, bedfile_id FROM bedfile_bedset_relation"
 
 
 # --------------------------------------------------------------------------- #
@@ -209,27 +171,8 @@ def load_config(path: str) -> dict:
     return _expand_env(data)
 
 
-def keyset_pages(fetch_page, limit: int, start_cursor=None):
-    """
-    Yield successive pages from a keyset-paginated source.
-
-    ``fetch_page(cursor, limit)`` returns ``(rows, next_cursor)``. Iteration
-    stops on the first page shorter than ``limit`` (an empty page ends it too,
-    which is what makes a boundary landing exactly on ``limit`` terminate
-    without emitting duplicates).
-    """
-    cursor = start_cursor
-    while True:
-        rows, cursor = fetch_page(cursor, limit)
-        if not rows:
-            break
-        yield rows
-        if len(rows) < limit:
-            break
-
-
 def rows_to_table(rows, schema: pa.Schema) -> pa.Table:
-    """Convert a page of row tuples (in schema column order) to a pyarrow Table."""
+    """Convert a batch of row tuples (in schema column order) to a pyarrow Table."""
     if rows:
         columns = list(zip(*rows))
     else:
@@ -239,6 +182,19 @@ def rows_to_table(rows, schema: pa.Schema) -> pa.Table:
         for i, col in enumerate(columns)
     ]
     return pa.table(arrays, schema=schema)
+
+
+def merge_metadata_batches(bed_batches, meta_map, n_meta_cols):
+    """
+    LEFT JOIN bed against bed_metadata, in Python, batch by batch.
+
+    ``bed_batches`` yields lists of bed row tuples (id first). ``meta_map`` maps
+    bed id -> tuple of metadata columns. A bed with no metadata row gets a full
+    row of NULLs, matching SQL LEFT JOIN semantics.
+    """
+    blank = (None,) * n_meta_cols
+    for batch in bed_batches:
+        yield [tuple(row) + meta_map.get(row[0], blank) for row in batch]
 
 
 def check_completeness(rows_written: int, expected_count: int, threshold: float):
@@ -278,14 +234,9 @@ def file_entry(path) -> dict:
     }
 
 
-# --------------------------------------------------------------------------- #
-# Export orchestration.
-# --------------------------------------------------------------------------- #
-
-
-def export_parquet(path, schema, fetch_page, chunk_size) -> int:
+def write_parquet_batches(path, schema, batch_iter) -> int:
     """
-    Stream a keyset-paginated source into a zstd Parquet file.
+    Stream batches (lists of row tuples) into a zstd Parquet file.
 
     Returns the number of rows actually written (the value the manifest and the
     integrity gate must use).
@@ -293,39 +244,39 @@ def export_parquet(path, schema, fetch_page, chunk_size) -> int:
     rows_written = 0
     writer = pq.ParquetWriter(str(path), schema, compression="zstd")
     try:
-        for page in keyset_pages(fetch_page, chunk_size):
-            writer.write_table(rows_to_table(page, schema))
-            rows_written += len(page)
+        for batch in batch_iter:
+            if not batch:
+                continue
+            writer.write_table(rows_to_table(batch, schema))
+            rows_written += len(batch)
     finally:
         writer.close()
     return rows_written
 
 
-def make_single_key_fetch(conn, query: str, key_index: int = 0):
-    """Build a fetch_page for a single-column string cursor."""
-
-    def fetch(cursor, limit):
-        with conn.cursor() as cur:
-            cur.execute(query, {"cursor": cursor, "limit": limit})
-            rows = cur.fetchall()
-        next_cursor = rows[-1][key_index] if rows else cursor
-        return rows, next_cursor
-
-    return fetch
+# --------------------------------------------------------------------------- #
+# Database streaming (server-side cursors; sequential, unordered scans).
+# --------------------------------------------------------------------------- #
 
 
-def make_membership_fetch(conn):
-    """Build a fetch_page for the composite (bedset_id, bedfile_id) cursor."""
+def stream_batches(conn, query: str, name: str, batch: int):
+    """Yield lists of rows from a server-side cursor, ``batch`` at a time."""
+    with conn.cursor(name=name) as cur:
+        cur.execute(query)
+        while True:
+            rows = cur.fetchmany(batch)
+            if not rows:
+                break
+            yield rows
 
-    def fetch(cursor, limit):
-        a, b = (None, None) if cursor is None else cursor
-        with conn.cursor() as cur:
-            cur.execute(MEMBERSHIP_QUERY, {"a": a, "b": b, "limit": limit})
-            rows = cur.fetchall()
-        next_cursor = (rows[-1][0], rows[-1][1]) if rows else cursor
-        return rows, next_cursor
 
-    return fetch
+def load_id_map(conn, query: str, name: str, batch: int) -> dict:
+    """Stream ``SELECT id, ...`` into an id -> (remaining columns) dict."""
+    out = {}
+    for rows in stream_batches(conn, query, name, batch):
+        for r in rows:
+            out[r[0]] = r[1:]
+    return out
 
 
 def count_rows(conn, table: str) -> int:
@@ -334,7 +285,7 @@ def count_rows(conn, table: str) -> int:
         return cur.fetchone()[0]
 
 
-def build_exports(conn, out_dir: Path, date_str: str, chunk_size: int,
+def build_exports(conn, out_dir: Path, date_str: str, batch_size: int,
                   fail_threshold: float) -> list[dict]:
     """
     Write the three Parquet files, gating each against its pre-scan count.
@@ -342,22 +293,9 @@ def build_exports(conn, out_dir: Path, date_str: str, chunk_size: int,
     Returns a list of per-file records: name, rows, bytes, sha256, file_type.
     All reads happen in the caller's REPEATABLE READ transaction.
     """
-    specs = [
-        ("metadata", METADATA_SCHEMA,
-         make_single_key_fetch(conn, _metadata_query()), "bed"),
-        ("bedsets", BEDSET_SCHEMA,
-         make_single_key_fetch(conn, _bedset_query()), "bedsets"),
-        ("bedset_membership", MEMBERSHIP_SCHEMA,
-         make_membership_fetch(conn), "bedfile_bedset_relation"),
-    ]
-
     records = []
-    for file_type, schema, fetch, table in specs:
-        expected = count_rows(conn, table)
-        filename = f"bedbase_{file_type}_{date_str}.parquet"
-        path = out_dir / filename
-        _LOGGER.info(f"Exporting {file_type}: ~{expected} rows -> {filename}")
-        rows_written = export_parquet(path, schema, fetch, chunk_size)
+
+    def finish(file_type, path, rows_written, expected):
         check_completeness(rows_written, expected, fail_threshold)
         entry = file_entry(path)
         entry["rows"] = rows_written  # rows written, never the count(*) value
@@ -367,6 +305,37 @@ def build_exports(conn, out_dir: Path, date_str: str, chunk_size: int,
             f"  wrote {rows_written} rows, {entry['bytes'] / 1e6:.1f} MB, "
             f"sha256={entry['sha256'][:12]}…"
         )
+
+    # metadata = bed LEFT JOIN bed_metadata, joined on the runner.
+    expected = count_rows(conn, "bed")
+    fname = f"bedbase_metadata_{date_str}.parquet"
+    path = out_dir / fname
+    _LOGGER.info(f"Exporting metadata: ~{expected} rows -> {fname}")
+    meta_map = load_id_map(conn, _meta_query(), "cur_meta_load", batch_size)
+    batches = merge_metadata_batches(
+        stream_batches(conn, _bed_query(), "cur_bed", batch_size),
+        meta_map,
+        len(META_COLUMNS),
+    )
+    rows_written = write_parquet_batches(path, METADATA_SCHEMA, batches)
+    del meta_map  # free before the next tables
+    finish("metadata", path, rows_written, expected)
+
+    # bedsets and membership: plain single-table streaming scans.
+    for file_type, schema, query, table, curname in [
+        ("bedsets", BEDSET_SCHEMA, _bedset_query(), "bedsets", "cur_bedsets"),
+        ("bedset_membership", MEMBERSHIP_SCHEMA, MEMBERSHIP_QUERY,
+         "bedfile_bedset_relation", "cur_membership"),
+    ]:
+        expected = count_rows(conn, table)
+        fname = f"bedbase_{file_type}_{date_str}.parquet"
+        path = out_dir / fname
+        _LOGGER.info(f"Exporting {file_type}: ~{expected} rows -> {fname}")
+        rows_written = write_parquet_batches(
+            path, schema, stream_batches(conn, query, curname, batch_size)
+        )
+        finish(file_type, path, rows_written, expected)
+
     return records
 
 
@@ -452,7 +421,7 @@ def publish(conn, out_dir: Path, records: list[dict], manifest: dict,
     _LOGGER.info(f"Recorded {len(to_upload)} rows in bed_snapshots")
 
 
-def run(config_path: str, out_dir: Path, chunk_size: int, fail_threshold: float,
+def run(config_path: str, out_dir: Path, batch_size: int, fail_threshold: float,
         do_publish: bool):
     import psycopg
     from psycopg import IsolationLevel
@@ -476,7 +445,7 @@ def run(config_path: str, out_dir: Path, chunk_size: int, fail_threshold: float,
     try:
         # Consistent read snapshot: counts and the full scan share one snapshot.
         conn.isolation_level = IsolationLevel.REPEATABLE_READ
-        records = build_exports(conn, out_dir, date_str, chunk_size, fail_threshold)
+        records = build_exports(conn, out_dir, date_str, batch_size, fail_threshold)
         conn.commit()  # end the read transaction before slow uploads
 
         ended = datetime.now(timezone.utc).isoformat()
@@ -510,8 +479,8 @@ def main():
                         help="Path to config.yaml (env-var interpolated)")
     parser.add_argument("--output-dir", default="exports",
                         help="Local directory for the built artifacts")
-    parser.add_argument("--chunk-size", type=int, default=DEFAULT_CHUNK_SIZE,
-                        help="Keyset chunk size (rows per query)")
+    parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE,
+                        help="Rows per server-side fetch / Parquet write batch")
     parser.add_argument("--fail-threshold", type=float, default=0.01,
                         help="Abort without publishing if this fraction of rows is missing")
     pub = parser.add_mutually_exclusive_group()
@@ -525,7 +494,7 @@ def main():
     run(
         config_path=args.config,
         out_dir=Path(args.output_dir),
-        chunk_size=args.chunk_size,
+        batch_size=args.batch_size,
         fail_threshold=args.fail_threshold,
         do_publish=args.publish,
     )

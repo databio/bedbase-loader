@@ -13,46 +13,54 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import export_metadata as em  # noqa: E402
 
 
-# --------------------------------------------------------------------------- #
-# A stubbed keyset source: known rows, paged by an integer id cursor.
-# --------------------------------------------------------------------------- #
+def batched(rows, n):
+    """Split a flat row list into batches of n (mimics stream_batches output)."""
+    return [rows[i:i + n] for i in range(0, len(rows), n)]
 
 
-def make_fetch(total):
-    """Return a fetch_page over ids 1..total, keyset-paginated on the id."""
-    data = [(i, f"name{i}") for i in range(1, total + 1)]
+class TestWriteParquetBatches:
+    def test_full_coverage(self, tmp_path):
+        schema = pa.schema([("id", pa.string()), ("n", pa.int64())])
+        rows = [(f"{i:032x}", i) for i in range(23)]
+        path = tmp_path / "cov.parquet"
+        written = em.write_parquet_batches(path, schema, iter(batched(rows, 5)))
+        assert written == 23
+        assert pq.read_table(path).to_pylist() == [
+            {"id": r[0], "n": r[1]} for r in rows
+        ]
 
-    def fetch(cursor, limit):
-        start = 0 if cursor is None else cursor  # ids are 1-based; cursor is last id
-        page = [row for row in data if row[0] > start][:limit]
-        next_cursor = page[-1][0] if page else cursor
-        return page, next_cursor
+    def test_exact_boundary_batches(self, tmp_path):
+        schema = pa.schema([("id", pa.string())])
+        rows = [(f"{i}",) for i in range(100)]
+        path = tmp_path / "b.parquet"
+        # 100 rows in batches of 50: two full batches, nothing dropped/duplicated.
+        written = em.write_parquet_batches(path, schema, iter(batched(rows, 50)))
+        assert written == 100
 
-    return fetch, data
+    def test_empty_and_blank_batches(self, tmp_path):
+        schema = pa.schema([("id", pa.string())])
+        path = tmp_path / "e.parquet"
+        written = em.write_parquet_batches(path, schema, iter([[], []]))
+        assert written == 0
+        assert pq.read_table(path).num_rows == 0
 
 
-class TestKeysetChunker:
-    def test_full_coverage_no_dupes(self):
-        fetch, data = make_fetch(23)
-        seen = [row for page in em.keyset_pages(fetch, 5) for row in page]
-        assert seen == data
-        assert len(seen) == len({r[0] for r in seen})  # no duplicates
+class TestMergeMetadata:
+    def test_left_join_semantics(self):
+        """A bed with no metadata gets a full row of NULLs (LEFT JOIN)."""
+        bed_batches = [[("aa", "bed1"), ("bb", "bed2")], [("cc", "bed3")]]
+        meta_map = {"aa": ("Homo sapiens", "ChIP-seq"), "cc": ("Mus musculus", "ATAC")}
+        out = [r for batch in em.merge_metadata_batches(bed_batches, meta_map, 2)
+               for r in batch]
+        assert out[0] == ("aa", "bed1", "Homo sapiens", "ChIP-seq")
+        assert out[1] == ("bb", "bed2", None, None)          # missing metadata -> NULLs
+        assert out[2] == ("cc", "bed3", "Mus musculus", "ATAC")
 
-    def test_boundary_exact_multiple(self):
-        """A chunk boundary landing exactly on the last row must still terminate."""
-        fetch, data = make_fetch(100)
-        pages = list(em.keyset_pages(fetch, 50))
-        assert [len(p) for p in pages] == [50, 50]
-        assert [row for page in pages for row in page] == data
-
-    def test_single_short_page(self):
-        fetch, data = make_fetch(3)
-        pages = list(em.keyset_pages(fetch, 50))
-        assert len(pages) == 1 and pages[0] == data
-
-    def test_empty_source(self):
-        fetch, _ = make_fetch(0)
-        assert list(em.keyset_pages(fetch, 10)) == []
+    def test_batches_preserved(self):
+        bed_batches = [[("a",)], [("b",), ("c",)]]
+        out = list(em.merge_metadata_batches(bed_batches, {}, 1))
+        assert [len(b) for b in out] == [1, 2]
+        assert out[1] == [("b", None), ("c", None)]
 
 
 class TestParquetRoundTrip:
@@ -61,22 +69,19 @@ class TestParquetRoundTrip:
             ("id", pa.string()),
             ("n", pa.int64()),
             ("flag", pa.bool_()),
-            ("val", pa.float64()),
             ("tags", pa.list_(pa.string())),
         ])
         rows = [
-            ("a" * 32, 5, True, 1.5, ["GSM1", "GSM2"]),
-            ("b" * 32, 7, False, 2.5, []),
+            ("a" * 32, 5, True, ["GSM1", "GSM2"]),
+            ("b" * 32, 7, False, []),
         ]
         path = tmp_path / "rt.parquet"
-        fetch = lambda cur, lim: (rows if cur is None else [], rows[-1][0])  # noqa: E731
-        written = em.export_parquet(path, schema, fetch, chunk_size=10)
+        written = em.write_parquet_batches(path, schema, iter([rows]))
         assert written == 2
 
         table = pq.read_table(path)
         assert table.schema == schema
         back = table.to_pylist()
-        assert back[0]["id"] == "a" * 32
         assert back[0]["tags"] == ["GSM1", "GSM2"]
         assert back[1]["flag"] is False
 
@@ -84,8 +89,7 @@ class TestParquetRoundTrip:
         schema = pa.schema([("id", pa.string())])
         rows = [(f"id{i}",) for i in range(100)]
         path = tmp_path / "z.parquet"
-        fetch = lambda cur, lim: (rows if cur is None else [], rows[-1][0])  # noqa: E731
-        em.export_parquet(path, schema, fetch, chunk_size=1000)
+        em.write_parquet_batches(path, schema, iter([rows]))
         meta = pq.ParquetFile(path).metadata.row_group(0).column(0)
         assert meta.compression == "ZSTD"
 
@@ -96,11 +100,9 @@ class TestFailureGate:
             em.check_completeness(rows_written=900, expected_count=1000, threshold=0.01)
 
     def test_does_not_raise_just_inside_threshold(self):
-        # 5 short out of 1000 = 0.5% < 1%
         em.check_completeness(rows_written=995, expected_count=1000, threshold=0.01)
 
     def test_extra_rows_never_trip_it(self):
-        # Concurrent ingest can add rows; that must not abort.
         em.check_completeness(rows_written=1010, expected_count=1000, threshold=0.01)
 
     def test_zero_expected_is_noop(self):
@@ -122,27 +124,22 @@ class TestManifestAndChecksum:
         that made a short dump undetectable.
         """
         schema = pa.schema([("id", pa.string())])
-        # The source yields only 3 rows even though a "count query" might say 10.
-        rows = [("x",), ("y",), ("z",)]
+        rows = [("x",), ("y",), ("z",)]  # 3 rows, even if a count query said 10
         path = tmp_path / "bedbase_metadata_2026_01_01.parquet"
-        fetch = lambda cur, lim: (rows if cur is None else [], "z")  # noqa: E731
-        rows_written = em.export_parquet(path, schema, fetch, chunk_size=100)
+        rows_written = em.write_parquet_batches(path, schema, iter([rows]))
         assert rows_written == 3
 
         entry = em.file_entry(path)
         entry["rows"] = rows_written
         entry["file_type"] = "metadata"
 
-        manifest = em.write_manifest(
-            tmp_path, "2026_01_01", [entry],
-            started="s", ended="e", source_db="bedbase",
-        )
+        em.write_manifest(tmp_path, "2026_01_01", [entry],
+                          started="s", ended="e", source_db="bedbase")
         data = json.loads((tmp_path / "manifest_2026_01_01.json").read_text())
         assert data["files"][0]["rows"] == 3            # rows written
         assert data["files"][0]["rows"] != 10           # NOT the count-query value
         assert data["schema_version"] == em.SCHEMA_VERSION
         assert data["source_database"] == "bedbase"
-        # Manifest checksum matches the file on disk.
         assert data["files"][0]["sha256"] == em.sha256_file(path)
 
 
@@ -170,8 +167,13 @@ class TestConfigInterpolation:
 
 
 class TestSchemaShape:
-    def test_metadata_schema_starts_with_id(self):
+    def test_metadata_is_bed_plus_metadata_only(self):
+        """Metadata export is bed + bed_metadata; no stats columns."""
         assert em.METADATA_SCHEMA.field(0).name == "id"
+        names = em.METADATA_SCHEMA.names
+        assert "assay" in names and "cell_line" in names       # bed_metadata present
+        assert "number_of_regions" not in names                # bed_stats absent
+        assert "gc_content" not in names
 
     def test_membership_is_two_columns(self):
         assert em.MEMBERSHIP_SCHEMA.names == ["bedset_id", "bedfile_id"]
