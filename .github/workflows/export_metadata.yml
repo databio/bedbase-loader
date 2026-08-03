@@ -3,18 +3,16 @@ name: Export metadata to S3
 # Dumps the full BEDbase metadata corpus (plus bedsets and membership) to dated,
 # immutable Parquet artifacts and publishes them to s3://bedbase/exports/.
 #
-# Rollout (see bedbase_metadata_export_plan_v1): this file is intentionally
-# workflow_dispatch-only. Dry-run with publish=false, then a real run, verify the
-# artifacts, and only then enable the schedule below as a separate commit.
+# Runs monthly (1st, 00:00 UTC) and publishes; also dispatchable manually
+# (publish defaults to false for a dry run).
 #
-# Retention policy: publish monthly; keep monthly snapshots for the trailing 12
-# months, then thin to quarterly (Jan/Apr/Jul/Oct 1) permanently. Nothing is
-# eligible for pruning until month 13, so the prune step is a later addition.
-#
-#  schedule:
-#  - cron: '0 0 1 * *' # midnight on the 1st of each month
+# Retention policy: keep monthly snapshots for the trailing 12 months, then thin
+# to quarterly (Jan/Apr/Jul/Oct 1) permanently. Nothing is eligible for pruning
+# until month 13, so the prune step is a later addition.
 
 on:
+  schedule:
+  - cron: '0 0 1 * *' # midnight on the 1st of each month
   workflow_dispatch:
     inputs:
       publish:
