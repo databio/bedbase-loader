@@ -7,8 +7,12 @@ name: Export metadata to S3
 # workflow_dispatch-only. Dry-run with publish=false, then a real run, verify the
 # artifacts, and only then enable the schedule below as a separate commit.
 #
+# Retention policy: publish monthly; keep monthly snapshots for the trailing 12
+# months, then thin to quarterly (Jan/Apr/Jul/Oct 1) permanently. Nothing is
+# eligible for pruning until month 13, so the prune step is a later addition.
+#
 #  schedule:
-#  - cron: '0 0 * * 1' # every Monday at midnight
+#  - cron: '0 0 1 * *' # midnight on the 1st of each month
 
 on:
   workflow_dispatch:

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Weekly bulk metadata export for BEDbase.
+Monthly bulk metadata export for BEDbase.
 
 Dumps the metadata corpus to Parquet (metadata, bedsets, bedset membership),
 writes a verifiable manifest, and optionally publishes the artifacts to S3 and
