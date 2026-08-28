@@ -1,7 +1,9 @@
 name: Export metadata to S3
 
 # Dumps the full BEDbase metadata corpus (plus bedsets and membership) to dated,
-# immutable Parquet artifacts and publishes them to s3://bedbase/exports/.
+# immutable Parquet artifacts and publishes them to s3://bedbase/snapshot/.
+# The build + publish is done by the `bedboss snapshot` command (bedboss builds
+# the Parquet/manifest; bbconf uploads to S3 and records the bed_snapshots index).
 #
 # Runs monthly (1st, 00:00 UTC) and publishes; also dispatchable manually
 # (publish defaults to false for a dry run).
@@ -39,20 +41,22 @@ jobs:
         python-version: "3.13"
 
     - name: Install dependencies
-      run: python3 -m pip install -r requirements-export.txt
+      # `bedboss snapshot new` (added in bedboss 0.12.0) pulls in bbconf, pyarrow,
+      # sqlalchemy, boto3, etc. transitively, so bedboss is the only direct dep.
+      run: python3 -m pip install 'bedboss>=0.12.0'
 
     - name: Disk before
       run: df -h "$RUNNER_TEMP" /
 
     - name: Export metadata
       run: |
-        ARGS=(--config config.yaml --output-dir "$RUNNER_TEMP/exports" --fail-threshold "$FAIL_THRESHOLD")
+        ARGS=(--bedbase-config config.yaml --outfolder "$RUNNER_TEMP/exports" --fail-threshold "$FAIL_THRESHOLD")
         if [ "$PUBLISH" = "true" ]; then
           ARGS+=(--publish)
         else
           ARGS+=(--no-publish)
         fi
-        python3 export_metadata.py "${ARGS[@]}"
+        bedboss snapshot new "${ARGS[@]}"
       env:
         # On a scheduled run the inputs context is empty, so PUBLISH needs a
         # fallback or the job would silently skip publishing. FAIL_THRESHOLD too.
