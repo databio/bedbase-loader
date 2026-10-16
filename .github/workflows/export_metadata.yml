@@ -46,13 +46,12 @@ jobs:
         cache-dependency-glob: .github/workflows/export_metadata.yml
 
     - name: Install dependencies
-      # `bedboss snapshot new` (added in bedboss 0.12.0) pulls in bbconf, pyarrow,
-      # sqlalchemy, boto3, etc. transitively, so bedboss is the only direct dep.
-      # sqlalchemy<2.1: bedboss 0.12.0 misses JSON columns under 2.1 and crashes
-      # on the bedsets export (Oct 2026). Drop once a fixed bedboss is released.
+      # `bedboss snapshot new` pulls in bbconf, pyarrow, sqlalchemy, boto3, etc.
+      # transitively, so bedboss is the only direct dep. 0.12.1 fixes the
+      # bedsets export under SQLAlchemy 2.1.
       # uv + CPU torch: bbconf pulls in geniml[ml]; the default CUDA torch wheels
       # made pip take 10-12 min.
-      run: uv pip install --system --torch-backend cpu 'bedboss>=0.12.0' 'sqlalchemy<2.1'
+      run: uv pip install --system --torch-backend cpu 'bedboss>=0.12.1'
 
     - name: Disk before
       run: df -h "$RUNNER_TEMP" /
