@@ -81,3 +81,15 @@ jobs:
     - name: Disk after
       if: always()
       run: df -h "$RUNNER_TEMP" /
+
+    - name: Notify on failure
+      # A timeout shows up as cancelled, not failure, so check both.
+      if: failure() || cancelled()
+      run: |
+        curl -fsS -X POST https://codon.databio.org/notify \
+          -H "X-Api-Key: $CODON_API_KEY" \
+          -H "Content-Type: application/json" \
+          -d "{\"text\": \"BEDbase metadata snapshot ${{ job.status }}: $RUN_URL\"}"
+      env:
+        CODON_API_KEY: ${{ secrets.CODON_API_KEY }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
