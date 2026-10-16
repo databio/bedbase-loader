@@ -31,9 +31,10 @@ on:
 jobs:
   export_metadata:
     runs-on: ubuntu-latest
-    # An order of magnitude over the ~2-5 min expectation, well under the
-    # 360-minute hard cap, so a hang fails in a useful amount of time.
-    timeout-minutes: 30
+    # Real runs take ~20 min (10-12 min install + 8+ min metadata export); 30
+    # cancelled the Oct 2026 run. Well under the 360-minute hard cap, so a hang
+    # still fails in a useful amount of time.
+    timeout-minutes: 90
     steps:
     - uses: actions/checkout@v7
     - uses: actions/setup-python@v7
