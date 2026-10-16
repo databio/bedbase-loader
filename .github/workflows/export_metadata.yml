@@ -31,22 +31,28 @@ on:
 jobs:
   export_metadata:
     runs-on: ubuntu-latest
-    # Real runs take ~20 min (10-12 min install + 8+ min metadata export); 30
-    # cancelled the Oct 2026 run. Well under the 360-minute hard cap, so a hang
-    # still fails in a useful amount of time.
+    # The metadata export alone takes 8-18 min; 30 cancelled the Oct 2026 run.
+    # Well under the 360-minute hard cap, so a hang still fails in a useful
+    # amount of time.
     timeout-minutes: 90
     steps:
     - uses: actions/checkout@v7
     - uses: actions/setup-python@v7
       with:
         python-version: "3.13"
+    - uses: astral-sh/setup-uv@v6
+      with:
+        enable-cache: true
+        cache-dependency-glob: .github/workflows/export_metadata.yml
 
     - name: Install dependencies
       # `bedboss snapshot new` (added in bedboss 0.12.0) pulls in bbconf, pyarrow,
       # sqlalchemy, boto3, etc. transitively, so bedboss is the only direct dep.
       # sqlalchemy<2.1: bedboss 0.12.0 misses JSON columns under 2.1 and crashes
       # on the bedsets export (Oct 2026). Drop once a fixed bedboss is released.
-      run: python3 -m pip install 'bedboss>=0.12.0' 'sqlalchemy<2.1'
+      # uv + CPU torch: bbconf pulls in geniml[ml]; the default CUDA torch wheels
+      # made pip take 10-12 min.
+      run: uv pip install --system --torch-backend cpu 'bedboss>=0.12.0' 'sqlalchemy<2.1'
 
     - name: Disk before
       run: df -h "$RUNNER_TEMP" /
