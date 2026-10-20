@@ -1,14 +1,14 @@
 """
 Finish bbconf migration 845d978eac7d on production (Oct 2026).
 
-bbconf 0.15.0 removed bed.pephub, but production was never migrated, so every
-new bed insert failed with a NOT NULL violation. The migration's other changes
-(two JSONB columns, analysis_files) are already there, and the database has no
-alembic revision, so `alembic upgrade` cannot run as-is.
+bbconf 0.15.0 removed bed.pephub, but production was stamped at alembic head
+without the column being dropped, so every new bed insert failed with a NOT
+NULL violation.
 
-Without --apply this only reports. With --apply it drops bed.pephub and stamps
-the database at bbconf's alembic head, after checking the rest of the
-migration is already in place.
+Without --apply this only reports. With --apply it drops bed.pephub, after
+checking that the database is at bbconf's alembic head and that bed.pephub is
+the only difference from bbconf's models. Tables bbconf does not know about
+(other projects share this database) are ignored.
 
 Usage: python fix_db_schema.py config.yaml [--apply]
 """
@@ -19,12 +19,12 @@ from pathlib import Path
 
 import bbconf
 import yaml
-from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from bbconf.db_utils import Base
-from sqlalchemy import URL, create_engine, inspect, text
+from sqlalchemy import URL, create_engine, text
 
 
 def main(config_path: str, apply: bool) -> int:
@@ -41,50 +41,38 @@ def main(config_path: str, apply: bool) -> int:
     engine = create_engine(url)
     cfg = Config()
     cfg.set_main_option("script_location", str(Path(bbconf.__file__).parent / "alembic"))
-    # alembic's config treats % as interpolation, so escape it in the password.
-    cfg.set_main_option(
-        "sqlalchemy.url", url.render_as_string(hide_password=False).replace("%", "%%")
-    )
+    head = ScriptDirectory.from_config(cfg).get_current_head()
 
     with engine.connect() as conn:
-        insp = inspect(conn)
-        revision = None
-        if insp.has_table("alembic_version"):
-            revision = conn.scalar(text("SELECT version_num FROM alembic_version"))
-        cols = {t: {c["name"] for c in insp.get_columns(t)} for t in ("bed", "bed_stats", "bedsets")}
-        state = {
-            "alembic revision": revision,
-            "bed.pephub": "pephub" in cols["bed"],
-            "bed_stats.distributions": "distributions" in cols["bed_stats"],
-            "bedsets.bedset_stats": "bedset_stats" in cols["bedsets"],
-            "analysis_files table": insp.has_table("analysis_files"),
-        }
+        revision = MigrationContext.configure(conn).get_current_revision()
         diffs = compare_metadata(MigrationContext.configure(conn), Base.metadata)
+    # remove_table = a table bbconf does not define, i.e. another project's.
+    diffs = [d for d in diffs if not (isinstance(d, tuple) and d[0] == "remove_table")]
 
-    for k, v in state.items():
-        print(f"{k}: {v}")
-    print(f"Differences between database and bbconf {bbconf.__version__} models ({len(diffs)}):")
+    print(f"Alembic revision: {revision} (bbconf {bbconf.__version__} head: {head})")
+    print(f"Differences from bbconf models ({len(diffs)}):")
     for d in diffs:
         print(f"  {d}")
 
-    expected = {
-        "alembic revision": None,
-        "bed.pephub": True,
-        "bed_stats.distributions": True,
-        "bedsets.bedset_stats": True,
-        "analysis_files table": True,
-    }
-    if state != expected:
+    pephub_only = (
+        len(diffs) == 1
+        and diffs[0][0] == "remove_column"
+        and diffs[0][2] == "bed"
+        and diffs[0][3].name == "pephub"
+    )
+    if revision == head and not diffs:
+        print("Schema matches bbconf. Nothing to do.")
+        return 0
+    if revision != head or not pephub_only:
         print("State is not what this fix expects. Not changing anything.", file=sys.stderr)
         return 1
     if not apply:
-        print("Dry run. Re-run with --apply to drop bed.pephub and stamp head.")
+        print("Dry run. Re-run with --apply to drop bed.pephub.")
         return 0
 
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE bed DROP COLUMN pephub"))
-    command.stamp(cfg, "head")
-    print("Dropped bed.pephub and stamped the database at bbconf's alembic head.")
+    print("Dropped bed.pephub.")
     return 0
 
 

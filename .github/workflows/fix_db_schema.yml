@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       apply:
-        description: 'Drop bed.pephub and stamp alembic head. Leave false for a report only.'
+        description: 'Drop bed.pephub. Leave false for a report only.'
         required: true
         default: false
         type: boolean
