@@ -29,19 +29,22 @@ from sqlalchemy import URL, create_engine, inspect, text
 
 def main(config_path: str, apply: bool) -> int:
     with open(config_path) as f:
-        db = yaml.safe_load(os.path.expandvars(f.read()))["database"]
+        db = {k: os.path.expandvars(str(v)) for k, v in yaml.safe_load(f)["database"].items()}
     url = URL.create(
         "postgresql+psycopg",
         username=db["user"],
         password=db["password"],
         host=db["host"],
-        port=db["port"],
+        port=int(db["port"]),
         database=db["database"],
     )
     engine = create_engine(url)
     cfg = Config()
     cfg.set_main_option("script_location", str(Path(bbconf.__file__).parent / "alembic"))
-    cfg.set_main_option("sqlalchemy.url", url.render_as_string(hide_password=False))
+    # alembic's config treats % as interpolation, so escape it in the password.
+    cfg.set_main_option(
+        "sqlalchemy.url", url.render_as_string(hide_password=False).replace("%", "%%")
+    )
 
     with engine.connect() as conn:
         insp = inspect(conn)
