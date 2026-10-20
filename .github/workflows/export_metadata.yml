@@ -87,6 +87,7 @@ jobs:
       uses: databio/actions/codon-notify@master
       with:
         api-key: ${{ secrets.CODON_API_KEY }}
+        url: ${{ secrets.CODON_NOTIFY_URL }}
         status: ${{ job.status }}
         message: BEDbase metadata snapshot
         details: "${{ github.event_name }} run, publish=${{ github.event_name == 'schedule' && 'true' || inputs.publish }}"

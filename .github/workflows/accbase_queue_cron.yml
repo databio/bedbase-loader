@@ -33,3 +33,12 @@ jobs:
           ACCBASE_POSTGRES_PASSWORD: ${{ secrets.ACCBASE_POSTGRES_PASSWORD }}
           ACCBASE_POSTGRES_USER: ${{ secrets.ACCBASE_POSTGRES_USER }}
           PEPHUB_API_KEY: ${{ secrets.PEPHUB_API_KEY }}
+
+      - name: Notify Codon
+        if: failure()
+        uses: databio/actions/codon-notify@master
+        with:
+          api-key: ${{ secrets.CODON_API_KEY }}
+          url: ${{ secrets.CODON_NOTIFY_URL }}
+          status: ${{ job.status }}
+          message: Accbase queue samples
